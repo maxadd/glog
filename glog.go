@@ -17,7 +17,7 @@ var (
 	pool *sync.Pool
 )
 
-type severity int32
+type Severity int32
 
 func init() {
 	pool = &sync.Pool{
@@ -28,7 +28,7 @@ func init() {
 }
 
 const (
-	DebugLog severity = iota
+	DebugLog Severity = iota
 	InfoLog
 	WarningLog
 	ErrorLog
@@ -70,13 +70,13 @@ func (l *loggingT) flushDaemon(flushInterval int) {
 
 type loggingT struct {
 	logPath     string
-	logLevel    severity
+	logLevel    Severity
 	fileMaxSize uint64 //flushInterval int
 	mu          sync.Mutex
 	file        flushSyncWriter // syncBuffer
 }
 
-func NewLogger(logPath, fileMaxSize string, logLevel severity, flushInterval int) *loggingT {
+func NewLogger(logPath, fileMaxSize string, logLevel Severity, flushInterval int) *loggingT {
 	n := unitConv(fileMaxSize)
 	logger := &loggingT{
 		logPath:     logPath,
@@ -118,11 +118,11 @@ func unitConv(s string) uint64 {
 	return 0
 }
 
-func (l *loggingT) SetLevel(level severity) {
+func (l *loggingT) SetLevel(level Severity) {
 	l.logLevel = level
 }
 
-func (l *loggingT) header(s severity, depth int) (*buffer, string, int) {
+func (l *loggingT) header(s Severity, depth int) (*buffer, string, int) {
 	_, file, line, ok := runtime.Caller(3 + depth)
 	if !ok {
 		file = "???"
@@ -226,7 +226,7 @@ func (l *loggingT) putBuffer(buf *buffer) {
 	pool.Put(buf)
 }
 
-func (l *loggingT) formatHeader(s severity, file string, line int) *buffer {
+func (l *loggingT) formatHeader(s Severity, file string, line int) *buffer {
 	now := timeNow()
 	if line < 0 {
 		line = 0 // not a real line number, but acceptable to someDigits
@@ -305,17 +305,17 @@ func (buf *buffer) someDigits(i, d int) int {
 	return copy(buf.tmp[i:], buf.tmp[j:])
 }
 
-func (l *loggingT) println(s severity, args ...interface{}) {
+func (l *loggingT) println(s Severity, args ...interface{}) {
 	buf, file, line := l.header(s, 0)
 	fmt.Fprintln(buf, args...)
 	l.output(buf, file, line)
 }
 
-func (l *loggingT) print(s severity, args ...interface{}) {
+func (l *loggingT) print(s Severity, args ...interface{}) {
 	l.printDepth(s, 1, args...)
 }
 
-func (l *loggingT) printDepth(s severity, depth int, args ...interface{}) {
+func (l *loggingT) printDepth(s Severity, depth int, args ...interface{}) {
 	buf, file, line := l.header(s, depth)
 	fmt.Fprint(buf, args...)
 	if buf.Bytes()[buf.Len()-1] != '\n' {
@@ -324,7 +324,7 @@ func (l *loggingT) printDepth(s severity, depth int, args ...interface{}) {
 	l.output(buf, file, line)
 }
 
-func (l *loggingT) printfDepth(s severity, depth int, format string, args ...interface{}) {
+func (l *loggingT) printfDepth(s Severity, depth int, format string, args ...interface{}) {
 	buf, file, line := l.header(s, depth)
 	fmt.Fprintf(buf, format, args...)
 	if buf.Bytes()[buf.Len()-1] != '\n' {
@@ -333,7 +333,7 @@ func (l *loggingT) printfDepth(s severity, depth int, format string, args ...int
 	l.output(buf, file, line)
 }
 
-func (l *loggingT) printf(s severity, format string, args ...interface{}) {
+func (l *loggingT) printf(s Severity, format string, args ...interface{}) {
 	buf, file, line := l.header(s, 0)
 	fmt.Fprintf(buf, format, args...)
 	if buf.Bytes()[buf.Len()-1] != '\n' {

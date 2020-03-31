@@ -43,12 +43,12 @@ type flushSyncWriter interface {
 	io.Writer
 }
 
-func (l *loggingT) Flush() {
+func (l *Logger) Flush() {
 	l.lockAndFlushAll()
 }
 
 // lockAndFlushAll is like flushAll but locks l.mu first.
-func (l *loggingT) lockAndFlushAll() {
+func (l *Logger) lockAndFlushAll() {
 	l.mu.Lock()
 	l.flushAll()
 	l.mu.Unlock()
@@ -56,7 +56,7 @@ func (l *loggingT) lockAndFlushAll() {
 
 // flushAll flushes all the logs and attempts to "sync" their data to disk.
 // l.mu is held.
-func (l *loggingT) flushAll() {
+func (l *Logger) flushAll() {
 	// Flush from fatal down, in case there's trouble flushing.
 	if l.file != nil {
 		l.file.Flush() // ignore error
@@ -64,13 +64,13 @@ func (l *loggingT) flushAll() {
 	}
 }
 
-func (l *loggingT) flushDaemon(flushInterval int) {
+func (l *Logger) flushDaemon(flushInterval int) {
 	for range time.NewTicker(time.Duration(flushInterval) * time.Second).C {
 		l.lockAndFlushAll()
 	}
 }
 
-type loggingT struct {
+type Logger struct {
 	logPath     string
 	logLevel    Severity
 	fileMaxSize uint64 //flushInterval int
@@ -78,9 +78,9 @@ type loggingT struct {
 	file        flushSyncWriter // syncBuffer
 }
 
-func NewLogger(logPath, fileMaxSize string, logLevel Severity, flushInterval int) *loggingT {
+func NewLogger(logPath, fileMaxSize string, logLevel Severity, flushInterval int) *Logger {
 	n := unitConv(fileMaxSize)
-	logger := &loggingT{
+	logger := &Logger{
 		logPath:     logPath,
 		logLevel:    logLevel,
 		fileMaxSize: n,
@@ -120,11 +120,11 @@ func unitConv(s string) uint64 {
 	return 0
 }
 
-func (l *loggingT) SetLevel(level Severity) {
+func (l *Logger) SetLevel(level Severity) {
 	l.logLevel = level
 }
 
-func (l *loggingT) header(s Severity, depth int) (*buffer, string, int) {
+func (l *Logger) header(s Severity, depth int) (*buffer, string, int) {
 	_, file, line, ok := runtime.Caller(3 + depth)
 	if !ok {
 		file = "???"
@@ -137,13 +137,13 @@ func (l *loggingT) header(s Severity, depth int) (*buffer, string, int) {
 	}
 	return l.formatHeader(s, file, line), file, line
 }
-func (l *loggingT) exit(err error) {
+func (l *Logger) exit(err error) {
 	fmt.Fprintf(os.Stderr, "log: exiting because of error: %s\n", err)
 	l.flushAll()
 	os.Exit(2)
 }
 
-func (l *loggingT) output(buf *buffer, file string, line int) {
+func (l *Logger) output(buf *buffer, file string, line int) {
 	data := buf.Bytes()
 	l.mu.Lock()
 	if l.file == nil {
@@ -161,7 +161,7 @@ func (l *loggingT) output(buf *buffer, file string, line int) {
 }
 
 type syncBuffer struct {
-	logger *loggingT
+	logger *Logger
 	*bufio.Writer
 	file   *os.File
 	num    int32
@@ -219,16 +219,16 @@ type buffer struct {
 	tmp [29]byte // temporary byte array for creating headers.
 }
 
-func (l *loggingT) getBuffer() *buffer {
+func (l *Logger) getBuffer() *buffer {
 	return pool.Get().(*buffer)
 }
 
-func (l *loggingT) putBuffer(buf *buffer) {
+func (l *Logger) putBuffer(buf *buffer) {
 	buf.Buffer.Reset()
 	pool.Put(buf)
 }
 
-func (l *loggingT) formatHeader(s Severity, file string, line int) *buffer {
+func (l *Logger) formatHeader(s Severity, file string, line int) *buffer {
 	now := timeNow()
 	if line < 0 {
 		line = 0 // not a real line number, but acceptable to someDigits
@@ -307,17 +307,17 @@ func (buf *buffer) someDigits(i, d int) int {
 	return copy(buf.tmp[i:], buf.tmp[j:])
 }
 
-func (l *loggingT) println(s Severity, args ...interface{}) {
+func (l *Logger) println(s Severity, args ...interface{}) {
 	buf, file, line := l.header(s, 0)
 	fmt.Fprintln(buf, args...)
 	l.output(buf, file, line)
 }
 
-func (l *loggingT) print(s Severity, args ...interface{}) {
+func (l *Logger) print(s Severity, args ...interface{}) {
 	l.printDepth(s, 1, args...)
 }
 
-func (l *loggingT) printDepth(s Severity, depth int, args ...interface{}) {
+func (l *Logger) printDepth(s Severity, depth int, args ...interface{}) {
 	buf, file, line := l.header(s, depth)
 	fmt.Fprint(buf, args...)
 	if buf.Bytes()[buf.Len()-1] != '\n' {
@@ -326,7 +326,7 @@ func (l *loggingT) printDepth(s Severity, depth int, args ...interface{}) {
 	l.output(buf, file, line)
 }
 
-func (l *loggingT) printfDepth(s Severity, depth int, format string, args ...interface{}) {
+func (l *Logger) printfDepth(s Severity, depth int, format string, args ...interface{}) {
 	buf, file, line := l.header(s, depth)
 	fmt.Fprintf(buf, format, args...)
 	if buf.Bytes()[buf.Len()-1] != '\n' {
@@ -335,7 +335,7 @@ func (l *loggingT) printfDepth(s Severity, depth int, format string, args ...int
 	l.output(buf, file, line)
 }
 
-func (l *loggingT) printf(s Severity, format string, args ...interface{}) {
+func (l *Logger) printf(s Severity, format string, args ...interface{}) {
 	buf, file, line := l.header(s, 0)
 	fmt.Fprintf(buf, format, args...)
 	if buf.Bytes()[buf.Len()-1] != '\n' {
@@ -344,124 +344,124 @@ func (l *loggingT) printf(s Severity, format string, args ...interface{}) {
 	l.output(buf, file, line)
 }
 
-func (l *loggingT) Debugf(format string, args ...interface{}) {
+func (l *Logger) Debugf(format string, args ...interface{}) {
 	if DebugLog >= l.logLevel {
 		l.printf(DebugLog, format, args...)
 	}
 }
 
-func (l *loggingT) Infof(format string, args ...interface{}) {
+func (l *Logger) Infof(format string, args ...interface{}) {
 	if InfoLog >= l.logLevel {
 		l.printf(InfoLog, format, args...)
 	}
 }
 
-func (l *loggingT) Warningf(format string, args ...interface{}) {
+func (l *Logger) Warningf(format string, args ...interface{}) {
 	if WarningLog >= l.logLevel {
 		l.printf(WarningLog, format, args...)
 	}
 }
 
-func (l *loggingT) Errorf(format string, args ...interface{}) {
+func (l *Logger) Errorf(format string, args ...interface{}) {
 	if ErrorLog >= l.logLevel {
 		l.printf(ErrorLog, format, args...)
 	}
 }
 
-func (l *loggingT) Fatalf(format string, args ...interface{}) {
+func (l *Logger) Fatalf(format string, args ...interface{}) {
 	if FatalLog >= l.logLevel {
 		l.printf(FatalLog, format, args...)
 		l.exit(errors.New(""))
 	}
 }
 
-func (l *loggingT) Debug(args ...interface{}) {
+func (l *Logger) Debug(args ...interface{}) {
 	if DebugLog >= l.logLevel {
 		l.print(DebugLog, args...)
 	}
 }
 
-func (l *loggingT) Info(args ...interface{}) {
+func (l *Logger) Info(args ...interface{}) {
 	if InfoLog >= l.logLevel {
 		l.print(InfoLog, args...)
 	}
 }
 
-func (l *loggingT) Warning(args ...interface{}) {
+func (l *Logger) Warning(args ...interface{}) {
 	if WarningLog >= l.logLevel {
 		l.print(WarningLog, args...)
 	}
 }
 
-func (l *loggingT) Error(args ...interface{}) {
+func (l *Logger) Error(args ...interface{}) {
 	if ErrorLog >= l.logLevel {
 		l.print(ErrorLog, args...)
 	}
 }
 
-func (l *loggingT) Fatal(args ...interface{}) {
+func (l *Logger) Fatal(args ...interface{}) {
 	if FatalLog >= l.logLevel {
 		l.print(FatalLog, args...)
 		l.exit(errors.New(""))
 	}
 }
 
-func (l *loggingT) DebugDepth(depth int, args ...interface{}) {
+func (l *Logger) DebugDepth(depth int, args ...interface{}) {
 	if DebugLog >= l.logLevel {
 		l.printDepth(DebugLog, depth, args...)
 	}
 }
 
-func (l *loggingT) InfoDepth(depth int, args ...interface{}) {
+func (l *Logger) InfoDepth(depth int, args ...interface{}) {
 	if InfoLog >= l.logLevel {
 		l.printDepth(InfoLog, depth, args...)
 	}
 }
 
-func (l *loggingT) WarningDepth(depth int, args ...interface{}) {
+func (l *Logger) WarningDepth(depth int, args ...interface{}) {
 	if WarningLog >= l.logLevel {
 		l.printDepth(WarningLog, depth, args...)
 	}
 }
 
-func (l *loggingT) ErrorDepth(depth int, args ...interface{}) {
+func (l *Logger) ErrorDepth(depth int, args ...interface{}) {
 	if ErrorLog >= l.logLevel {
 		l.printDepth(ErrorLog, depth, args...)
 	}
 }
 
-func (l *loggingT) FatalDepth(depth int, args ...interface{}) {
+func (l *Logger) FatalDepth(depth int, args ...interface{}) {
 	if FatalLog >= l.logLevel {
 		l.printDepth(FatalLog, depth, args...)
 		l.exit(errors.New(""))
 	}
 }
 
-func (l *loggingT) DebugfDepth(depth int, format string, args ...interface{}) {
+func (l *Logger) DebugfDepth(depth int, format string, args ...interface{}) {
 	if DebugLog >= l.logLevel {
 		l.printfDepth(DebugLog, depth, format, args...)
 	}
 }
 
-func (l *loggingT) InfofDepth(depth int, format string, args ...interface{}) {
+func (l *Logger) InfofDepth(depth int, format string, args ...interface{}) {
 	if InfoLog >= l.logLevel {
 		l.printfDepth(InfoLog, depth, format, args...)
 	}
 }
 
-func (l *loggingT) WarningfDepth(depth int, format string, args ...interface{}) {
+func (l *Logger) WarningfDepth(depth int, format string, args ...interface{}) {
 	if WarningLog >= l.logLevel {
 		l.printfDepth(WarningLog, depth, format, args...)
 	}
 }
 
-func (l *loggingT) ErrorfDepth(depth int, format string, args ...interface{}) {
+func (l *Logger) ErrorfDepth(depth int, format string, args ...interface{}) {
 	if ErrorLog >= l.logLevel {
 		l.printfDepth(ErrorLog, depth, format, args...)
 	}
 }
 
-func (l *loggingT) FatalfDepth(depth int, format string, args ...interface{}) {
+func (l *Logger) FatalfDepth(depth int, format string, args ...interface{}) {
 	if FatalLog >= l.logLevel {
 		l.printfDepth(FatalLog, depth, format, args...)
 		l.exit(errors.New(""))

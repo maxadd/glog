@@ -58,8 +58,10 @@ func (l *loggingT) lockAndFlushAll() {
 // l.mu is held.
 func (l *loggingT) flushAll() {
 	// Flush from fatal down, in case there's trouble flushing.
-	l.file.Flush() // ignore error
-	l.file.Sync()  // ignore error
+	if l.file != nil {
+		l.file.Flush() // ignore error
+		l.file.Sync()  // ignore error
+	}
 }
 
 func (l *loggingT) flushDaemon(flushInterval int) {

@@ -181,12 +181,16 @@ func (sb *syncBuffer) rotateFile(now time.Time) error {
 }
 
 func (sb *syncBuffer) create() (err error) {
-	sb.file, err = os.Create(sb.logger.logPath)
+	sb.file, err = os.OpenFile(sb.logger.logPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
 	if err != nil {
 		return err
 	}
 	//atomic.StoreUint64(&sb.nbytes, 0)
-	sb.nbytes = 0
+	info, err := sb.file.Stat()
+	if err != nil {
+		return err
+	}
+	sb.nbytes = uint64(info.Size())
 	sb.logger.file = sb
 	sb.Writer = bufio.NewWriterSize(sb.file, bufferSize)
 	return nil
